@@ -1,0 +1,365 @@
+#!/usr/bin/env node
+
+'use strict';
+
+var fs = require('fs');
+var path = require('path');
+var util = require('util');
+var log = require('verbalize');
+var argv = require('minimist')(process.argv.slice(2));
+var im = require('imagemagick');
+var Q = require('q');
+
+/**
+ * Everything in the file should be customized
+ */
+
+// Verbalize `runner`
+log.runner = 'mf-gallery-meta-creator';
+
+var ARGS = {
+  path: argv.p || argv.path,
+  size: argv.s || argv.size,
+  coverSize: argv.c || argv.coverSize
+};
+
+if (!ARGS.path) {
+  usage('Please specify the path to the images..');
+  return;
+}
+if (!ARGS.size) {
+  usage('Please specify at least one thumbnail size.');
+  return;
+}
+// make an array if isn't already
+if (!util.isArray(ARGS.size)) {
+  ARGS.size = [ ARGS.size ];
+}
+
+//
+var CONFIG = {
+  fileRegExp: /\.jpe?g$/i,
+  thumbDir: '.thumbs',
+  albumMetaName: 'album-meta.json',
+  metaName: 'meta.json'
+};
+
+
+/**
+ * Application
+ */
+
+function usage(hint) {
+  log.writeln(log.bold('Usage:'));
+  log.writeln('\t-p or --path= \t\t\tthe path to images');
+  log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
+  log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
+  log.writeln('');
+  log.writeln(log.bold('Example:'));
+  log.writeln('\t-p dir1/dir2/dir3 -s 150 -s 300');
+  log.error(hint);
+}
+
+function readFolder(baseFolder) {
+
+  var readAlbumMetaFilePromises = [];
+
+  function readFolderInternal(folder) {
+
+    var content = {
+      fullPath: folder,
+      name: path.basename(folder),
+      meta: {},
+      files: [],
+      folder: []
+    };
+
+    fs.readdirSync(folder).forEach(function (name) {
+
+      // skip .xxxx folder/files
+      if (name.indexOf('.') === 0) {
+        return;
+      }
+
+      var fullName = folder + '/' + name;
+      var stat = fs.statSync(fullName);
+
+      if (stat.isDirectory()) {
+        content.folder.push(readFolderInternal(fullName));
+        return;
+      }
+
+      if (name === CONFIG.albumMetaName) {
+        log.info('Album meta file found in ', folder);
+        readAlbumMetaFilePromises.push(
+          readAlbumMetaFile(fullName).then(function (metaInfo) {
+            content.meta = metaInfo;
+          })
+        );
+      }
+
+      if (!CONFIG.fileRegExp.test(name)) {
+        return;
+      }
+
+      content.files.push(name);
+    });
+
+    return content;
+  }
+
+  var result = readFolderInternal(baseFolder);
+
+  return Q.all(readAlbumMetaFilePromises).then(function () {
+    return result;
+  });
+}
+
+/**
+ * @param filename
+ * @returns {promise} with parsed meta info object
+ */
+function readAlbumMetaFile(filename) {
+  var deferred = Q.defer();
+  fs.readFile(filename, function (err, data) {
+    if (err) {
+      deferred.reject('Could not read album metafile "' + filename + '": ' + err);
+      return;
+    }
+
+    try {
+      var info = JSON.parse(data.toString());
+      deferred.resolve(info);
+    } catch (e) {
+      deferred.reject('Unable to parse album metafile "' + filename + '": ' + e);
+    }
+  });
+
+  return deferred.promise;
+}
+
+function resizeImage(src, target, size) {
+  var deferred = Q.defer();
+
+  im.resize({
+    srcPath: src,
+    dstPath: target,
+    width: size,
+    height: size
+  }, function (err, stdout, stderr) {
+    if (err) {
+      deferred.reject(err);
+      return;
+    }
+
+    deferred.resolve('resized', target);
+  });
+
+  return deferred.promise;
+}
+
+/**
+ *
+ * @param path
+ * @param imageFile
+ * @returns {Array of Promise}
+ */
+function createThumbnailsForImage(dirContent, imageFile) {
+  var srcImage = dirContent.fullPath + '/' + imageFile;
+  var thumbDirPath = dirContent.fullPath + '/' + CONFIG.thumbDir;
+
+  function resize(size) {
+    var target = util.format('%s/%d-%s', thumbDirPath, size, imageFile);
+
+    if (fs.existsSync(target)) {
+      log.info('Thumbnail exists:', size, target);
+      return promises;
+    }
+
+    log.info('Create thumbnail:', size, target);
+
+    if (!fs.existsSync(thumbDirPath)) {
+      fs.mkdirSync(thumbDirPath);
+    }
+
+    promises.push(
+      resizeImage(srcImage, target, size)
+    );
+  }
+
+  var promises = [];
+  ARGS.size.forEach(resize);
+
+  return promises;
+}
+
+// function copied from the imagemagick nodejs lib
+function ExifDate(value) {
+  // YYYY:MM:DD HH:MM:SS -> Date(YYYY-MM-DD HH:MM:SS +0000)
+  value = value.split(/ /);
+  return new Date(value[0].replace(/:/g, '-')+' '+
+    value[1]+' +0000');
+}
+
+/**
+ *
+ * @param imageFilename
+ * @returns {promise}
+ */
+function readSomeExifData(path, imageFilename) {
+  var deferred = Q.defer();
+
+  im.identify(path + '/' + imageFilename, function (err, data) {
+    if (err) {
+      deferred.reject(err);
+      return;
+    }
+
+    if (!data.width || !data.height) {
+      log.warn('No width or height: ' + imageFilename);
+    }
+
+    var result = {
+      path: path,
+      name: imageFilename,
+      width: -1,
+      height: -1,
+      exif: {}
+    };
+    if (!data) {
+      log.warn('No metadata for ' + imageFilename);
+      deferred.resolve(result);
+      return;
+    }
+
+    result.width = data.width;
+    result.height = data.height;
+
+    var exif = result.exif;
+    if (data.properties) {
+      exif.make = data.properties['exif:make'];
+      exif.model = data.properties['exif:model'];
+
+      var timeStr = data.properties['exif:datetimedigitized'] || data.properties['exif:datetimeoriginal'];
+      if (timeStr) {
+        exif.time = new ExifDate(timeStr).getTime();
+      }
+    }
+
+    deferred.resolve(result);
+  });
+
+  return deferred.promise;
+}
+
+/**
+ *
+ * @param dirContent
+ * @param imageFilesWithExif
+ * @returns {promise}
+ */
+function writeMetafile(dirContent, imageFilesWithExif) {
+  if (imageFilesWithExif.length === 0) {
+    return Q.when();
+  }
+
+  log.info('Create metadata file for ', dirContent.fullPath);
+
+  var images = imageFilesWithExif.map(function (obj) {
+    return {
+      name: obj.name,
+      width: obj.width,
+      height: obj.height,
+      exif: obj.exif
+    };
+  });
+
+  // sort the image array by exif timestamp and filename as fallback
+  images.sort(function (a, b) {
+    var timeA = (a.exif && a.exif.time) || Math.MAX_VALUE;
+    var timeB = (b.exif && b.exif.time) || Math.MAX_VALUE;
+    var diff = a - b;
+    if (diff !== 0) {
+      return diff;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  var metaData = {
+    meta: {
+      name: dirContent.meta.name || dirContent.name,
+      description: dirContent.meta.description || ''
+    },
+    images: images,
+    subDirs: []
+  };
+
+  dirContent.folder.forEach(function (subFolderContent) {
+    var subContent = subFolderContent.meta;
+    subContent.folder = subFolderContent.name;
+    subContent.cover = subContent.cover || subFolderContent.files[0] || null;
+    metaData.subDirs.push(subContent);
+  });
+
+  var deferred = Q.defer();
+  var fullFilename = dirContent.fullPath + '/' + CONFIG.metaName;
+  fs.writeFile(fullFilename, JSON.stringify(metaData), function (err) {
+    if (err) {
+      deferred.reject('write error' + err);
+      return;
+    }
+
+    deferred.resolve(fullFilename);
+  });
+
+  return deferred.promise;
+}
+
+function workOnDirContent(dirContent) {
+  var readExifMetaPromises = [];
+
+  dirContent.files.forEach(function (filename) {
+    thumbnailPromises = thumbnailPromises.concat(createThumbnailsForImage(dirContent, filename));
+
+    readExifMetaPromises.push(readSomeExifData(dirContent.fullPath, filename));
+  });
+
+  var subDirPromises = [];
+  dirContent.folder.forEach(function (subDirContent) {
+    subDirPromises.push(workOnDirContent(subDirContent));
+  });
+
+  return Q.all(subDirPromises).then(function (/*don't care*/) {
+    return Q.all(readExifMetaPromises).then(function (imageFilesWithExif) {
+
+
+      return writeMetafile(dirContent, imageFilesWithExif);
+    });
+  });
+}
+
+
+/* Start here */
+
+
+if (!fs.existsSync(ARGS.path)) {
+  log.error('Path "', ARGS.path, '" did not exists.');
+  return;
+}
+
+log.info('Reading ', ARGS.path, ' for images...');
+
+
+var thumbnailPromises = [];
+
+readFolder(ARGS.path).then(workOnDirContent).then(function (/*don't care*/) {
+  return Q.all(thumbnailPromises);
+}).done(
+  function () {
+    log.done('Done!');
+  },
+  function error(err) {
+    log.error('We got errors: ', err);
+    throw err;
+  }
+);

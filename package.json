@@ -1,0 +1,27 @@
+{
+  "name": "mf-gallery-meta-creator",
+  "description": "makes metadata for the mfGallery",
+  "version": "0.1.0",
+  "homepage": "https://github.com//mf-gallery-meta-creator",
+  "author": {
+    "name": "Holger",
+    "url": "https://github.com/smilix"
+  },
+  "preferGlobal": true,
+  "bin": {
+    "makeMeta": "./bin/makeMeta"
+  },
+  "main": "index.js",
+  "engines": {
+    "node": "~0.10.25"
+  },
+  "scripts": {
+    "test": "mocha -R test"
+  },
+  "dependencies": {
+    "minimist": "~0.0.8",
+    "verbalize": "~0.1.1",
+    "imagemagick": "~0.1.3",
+    "q": "~1.0.1"
+  }
+}
