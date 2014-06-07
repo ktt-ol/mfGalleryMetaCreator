@@ -9,6 +9,7 @@ var log = require('verbalize');
 var argv = require('minimist')(process.argv.slice(2));
 var im = require('imagemagick');
 var Q = require('q');
+var arrayFind = require('array-find');
 
 /**
  * Everything in the file should be customized
@@ -62,7 +63,7 @@ function usage(hint) {
 
 function readFolder(baseFolder) {
 
-  var readAlbumMetaFilePromises = [];
+  var readJsonPromises = [];
 
   function readFolderInternal(folder) {
 
@@ -71,7 +72,9 @@ function readFolder(baseFolder) {
       name: path.basename(folder),
       meta: {},
       files: [],
-      folder: []
+      folder: [],
+      //
+      prevImages: []
     };
 
     fs.readdirSync(folder).forEach(function (name) {
@@ -91,9 +94,18 @@ function readFolder(baseFolder) {
 
       if (name === CONFIG.albumMetaName) {
         log.info('Album meta file found in ', folder);
-        readAlbumMetaFilePromises.push(
-          readAlbumMetaFile(fullName).then(function (metaInfo) {
+        readJsonPromises.push(
+          readJsonFile(fullName).then(function (metaInfo) {
             content.meta = metaInfo;
+          })
+        );
+      }
+
+      if (name === CONFIG.metaName) {
+        log.writeln('Previous generated meta file found in ', folder);
+        readJsonPromises.push(
+          readJsonFile(fullName).then(function (prevGenMeta) {
+            content.prevImages = (prevGenMeta && prevGenMeta.images) || [];
           })
         );
       }
@@ -110,20 +122,22 @@ function readFolder(baseFolder) {
 
   var result = readFolderInternal(baseFolder);
 
-  return Q.all(readAlbumMetaFilePromises).then(function () {
+  return Q.all(readJsonPromises).then(function () {
     return result;
   });
 }
+
+
 
 /**
  * @param filename
  * @returns {promise} with parsed meta info object
  */
-function readAlbumMetaFile(filename) {
+function readJsonFile(filename) {
   var deferred = Q.defer();
   fs.readFile(filename, function (err, data) {
     if (err) {
-      deferred.reject('Could not read album metafile "' + filename + '": ' + err);
+      deferred.reject('Could not read json file "' + filename + '": ' + err);
       return;
     }
 
@@ -131,7 +145,7 @@ function readAlbumMetaFile(filename) {
       var info = JSON.parse(data.toString());
       deferred.resolve(info);
     } catch (e) {
-      deferred.reject('Unable to parse album metafile "' + filename + '": ' + e);
+      deferred.reject('Unable to parse the json file "' + filename + '": ' + e);
     }
   });
 
@@ -203,13 +217,33 @@ function ExifDate(value) {
 
 /**
  *
+ * @param dirContent
  * @param imageFilename
  * @returns {promise}
  */
-function readSomeExifData(path, imageFilename) {
-  var deferred = Q.defer();
+function readSomeExifData(dirContent, imageFilename) {
 
-  im.identify(path + '/' + imageFilename, function (err, data) {
+  var result = {
+    path: dirContent.fullPath,
+    name: imageFilename,
+    width: -1,
+    height: -1,
+    exif: {}
+  };
+
+  var prevData = arrayFind(dirContent.prevImages, function (element) {
+    return element.name === imageFilename;
+  });
+
+  if (prevData) {
+    result.width = prevData.width;
+    result.height = prevData.height;
+    result.exif = prevData.exif;
+    return Q.when(result);
+  }
+
+  var deferred = Q.defer();
+  im.identify(dirContent.fullPath + '/' + imageFilename, function (err, data) {
     if (err) {
       deferred.reject(err);
       return;
@@ -219,13 +253,6 @@ function readSomeExifData(path, imageFilename) {
       log.warn('No width or height: ' + imageFilename);
     }
 
-    var result = {
-      path: path,
-      name: imageFilename,
-      width: -1,
-      height: -1,
-      exif: {}
-    };
     if (!data) {
       log.warn('No metadata for ' + imageFilename);
       deferred.resolve(result);
@@ -321,7 +348,7 @@ function workOnDirContent(dirContent) {
   dirContent.files.forEach(function (filename) {
     thumbnailPromises = thumbnailPromises.concat(createThumbnailsForImage(dirContent, filename));
 
-    readExifMetaPromises.push(readSomeExifData(dirContent.fullPath, filename));
+    readExifMetaPromises.push(readSomeExifData(dirContent, filename));
   });
 
   var subDirPromises = [];
