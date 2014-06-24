@@ -10,12 +10,26 @@ var argv = require('minimist')(process.argv.slice(2));
 var im = require('imagemagick');
 var Q = require('q');
 var arrayFind = require('array-find');
+var async = require('async');
+
 
 /**
- * Everything in the file should be customized
+ * Config
  */
 
-// Verbalize `runner`
+var CONFIG = {
+  fileRegExp: /\.jpe?g$/i,
+  thumbDir: '.thumbs',
+  albumMetaName: 'album-meta.json',
+  metaName: 'meta.json',
+  maxProcessSpawns: 5
+};
+
+
+/**
+ * Startup
+ */
+
 log.runner = 'mf-gallery-meta-creator';
 
 var ARGS = {
@@ -37,18 +51,27 @@ if (!util.isArray(ARGS.size)) {
   ARGS.size = [ ARGS.size ];
 }
 
-//
-var CONFIG = {
-  fileRegExp: /\.jpe?g$/i,
-  thumbDir: '.thumbs',
-  albumMetaName: 'album-meta.json',
-  metaName: 'meta.json'
-};
-
 
 /**
  * Application
  */
+
+// a task for the imaging processes. If we don't limit the maximum executions, we run into the ulimit
+var imQueue = async.queue(function (task, callback) {
+  if (task.type === 'identify') {
+    im.identify(task.param, function (err, data) {
+      task.callback(err, data);
+      callback();
+    });
+  } else if (task.type === 'resize') {
+    im.resize(task.param, function (err, data) {
+      task.callback(err, data);
+      callback();
+    });
+  } else {
+    callback('invalid task type: ' + task.type);
+  }
+}, CONFIG.maxProcessSpawns);
 
 function usage(hint) {
   log.writeln(log.bold('Usage:'));
@@ -128,7 +151,6 @@ function readFolder(baseFolder) {
 }
 
 
-
 /**
  * @param filename
  * @returns {promise} with parsed meta info object
@@ -153,21 +175,25 @@ function readJsonFile(filename) {
 }
 
 function resizeImage(src, target, size) {
-  var deferred = Q.defer();
-
-  im.resize({
+  var resizeParam = {
     srcPath: src,
     dstPath: target,
     width: size,
     height: size
-  }, function (err, stdout, stderr) {
-    if (err) {
-      deferred.reject(err);
-      return;
-    }
+  };
 
-    deferred.resolve('resized', target);
-  });
+  var deferred = Q.defer();
+  imQueue.push({
+    type: 'resize',
+    param: resizeParam,
+    callback: function (err, stdout, stderr) {
+      if (err) {
+        deferred.reject(err);
+        return;
+      }
+
+      deferred.resolve('resized', target);
+    }});
 
   return deferred.promise;
 }
@@ -211,8 +237,8 @@ function createThumbnailsForImage(dirContent, imageFile) {
 function ExifDate(value) {
   // YYYY:MM:DD HH:MM:SS -> Date(YYYY-MM-DD HH:MM:SS +0000)
   value = value.split(/ /);
-  return new Date(value[0].replace(/:/g, '-')+' '+
-    value[1]+' +0000');
+  return new Date(value[0].replace(/:/g, '-') + ' ' +
+    value[1] + ' +0000');
 }
 
 /**
@@ -243,38 +269,41 @@ function readSomeExifData(dirContent, imageFilename) {
   }
 
   var deferred = Q.defer();
-  im.identify(dirContent.fullPath + '/' + imageFilename, function (err, data) {
-    if (err) {
-      deferred.reject(err);
-      return;
-    }
-
-    if (!data.width || !data.height) {
-      log.warn('No width or height: ' + imageFilename);
-    }
-
-    if (!data) {
-      log.warn('No metadata for ' + imageFilename);
-      deferred.resolve(result);
-      return;
-    }
-
-    result.width = data.width;
-    result.height = data.height;
-
-    var exif = result.exif;
-    if (data.properties) {
-      exif.make = data.properties['exif:make'];
-      exif.model = data.properties['exif:model'];
-
-      var timeStr = data.properties['exif:datetimedigitized'] || data.properties['exif:datetimeoriginal'];
-      if (timeStr) {
-        exif.time = new ExifDate(timeStr).getTime();
+  imQueue.push({
+    type: 'identify',
+    param: dirContent.fullPath + '/' + imageFilename,
+    callback: function (err, data) {
+      if (err) {
+        deferred.reject(err);
+        return;
       }
-    }
 
-    deferred.resolve(result);
-  });
+      if (!data.width || !data.height) {
+        log.warn('No width or height: ' + imageFilename);
+      }
+
+      if (!data) {
+        log.warn('No metadata for ' + imageFilename);
+        deferred.resolve(result);
+        return;
+      }
+
+      result.width = data.width;
+      result.height = data.height;
+
+      var exif = result.exif;
+      if (data.properties) {
+        exif.make = data.properties['exif:make'];
+        exif.model = data.properties['exif:model'];
+
+        var timeStr = data.properties['exif:datetimedigitized'] || data.properties['exif:datetimeoriginal'];
+        if (timeStr) {
+          exif.time = new ExifDate(timeStr).getTime();
+        }
+      }
+
+      deferred.resolve(result);
+    }});
 
   return deferred.promise;
 }
