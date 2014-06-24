@@ -318,10 +318,6 @@ function readSomeExifData(dirContent, imageFilename) {
  * @returns {promise}
  */
 function writeMetafile(dirContent, imageFilesWithExif) {
-  if (imageFilesWithExif.length === 0) {
-    return Q.when();
-  }
-
   log.info('Create metadata file for ', dirContent.fullPath);
 
   var images = imageFilesWithExif.map(function (obj) {
@@ -390,8 +386,6 @@ function workOnDirContent(dirContent) {
 
   return Q.all(subDirPromises).then(function (/*don't care*/) {
     return Q.all(readExifMetaPromises).then(function (imageFilesWithExif) {
-
-
       return writeMetafile(dirContent, imageFilesWithExif);
     });
   });
