@@ -56,7 +56,7 @@ if (!util.isArray(ARGS.size)) {
  * Application
  */
 
-// a task for the imaging processes. If we don't limit the maximum executions, we run into the ulimit
+// a task for the imaging processes. If we don't limit the max concurrent process spawns, we run into the ulimit
 var imQueue = async.queue(function (task, callback) {
   if (task.type === 'identify') {
     im.identify(task.param, function (err, data) {
@@ -191,6 +191,7 @@ function resizeImage(src, target, size) {
         deferred.reject(err);
         return;
       }
+      log.info('Thumbnail created:', size, target);
 
       deferred.resolve('resized', target);
     }});
@@ -215,8 +216,6 @@ function createThumbnailsForImage(dirContent, imageFile) {
       log.info('Thumbnail exists:', size, target);
       return promises;
     }
-
-    log.info('Create thumbnail:', size, target);
 
     if (!fs.existsSync(thumbDirPath)) {
       fs.mkdirSync(thumbDirPath);
@@ -268,10 +267,12 @@ function readSomeExifData(dirContent, imageFilename) {
     return Q.when(result);
   }
 
+  var target = dirContent.fullPath + '/' + imageFilename;
+
   var deferred = Q.defer();
   imQueue.push({
     type: 'identify',
-    param: dirContent.fullPath + '/' + imageFilename,
+    param: target,
     callback: function (err, data) {
       if (err) {
         deferred.reject(err);
@@ -301,6 +302,8 @@ function readSomeExifData(dirContent, imageFilename) {
           exif.time = new ExifDate(timeStr).getTime();
         }
       }
+
+      log.info('Image metadata read:', target);
 
       deferred.resolve(result);
     }});
