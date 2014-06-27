@@ -331,9 +331,10 @@ function writeMetafile(dirContent, imageFilesWithExif) {
 
   // sort the image array by exif timestamp and filename as fallback
   images.sort(function (a, b) {
-    var timeA = (a.exif && a.exif.time) || Math.MAX_VALUE;
-    var timeB = (b.exif && b.exif.time) || Math.MAX_VALUE;
-    var diff = a - b;
+    var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
+    var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
+
+    var diff = timeA - timeB;
     if (diff !== 0) {
       return diff;
     }
