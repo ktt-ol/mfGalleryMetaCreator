@@ -35,8 +35,16 @@ log.runner = 'mf-gallery-meta-creator';
 var ARGS = {
   path: argv.p || argv.path,
   size: argv.s || argv.size,
-  coverSize: argv.c || argv.coverSize
+  coverSize: argv.c || argv.coverSize,
+  order: argv.order || ORDER[0]
 };
+
+var ORDER = [
+  'exifTimeAsc',
+  'exifTimeDesc',
+  'filenameAsc',
+  'filenameDesc'
+];
 
 if (!ARGS.path) {
   usage('Please specify the path to the images..');
@@ -46,6 +54,11 @@ if (!ARGS.size) {
   usage('Please specify at least one thumbnail size.');
   return;
 }
+if (ORDER.indexOf(ARGS.order) === -1) {
+  usage('Invalid value for ´order´.');
+  return;
+}
+
 // make an array if isn't already
 if (!util.isArray(ARGS.size)) {
   ARGS.size = [ ARGS.size ];
@@ -77,12 +90,47 @@ function usage(hint) {
   log.writeln(log.bold('Usage:'));
   log.writeln('\t-p or --path= \t\t\tthe path to images');
   log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
+  log.writeln('\t--order=' + ORDER.join('|'));
+  log.writeln('\t\tdefault is '+ ORDER[0]);
   log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
   log.writeln('');
   log.writeln(log.bold('Example:'));
   log.writeln('\t-p dir1/dir2/dir3 -s 150 -s 300');
   log.error(hint);
 }
+
+var orderFunctions = {
+  exifTimeAsc: function (a, b) {
+    var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
+    var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
+
+    var diff = timeA - timeB;
+    if (diff !== 0) {
+      return diff;
+    }
+
+    return a.name.localeCompare(b.name);
+  },
+
+  exifTimeDesc: function (a, b) {
+    var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
+    var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
+
+    var diff = timeB - timeA;
+    if (diff !== 0) {
+      return diff;
+    }
+    return a.name.localeCompare(b.name);
+  },
+
+  filenameAsc: function (a, b) {
+    return a.name.localeCompare(b.name);
+  },
+
+  filenameDesc: function (a, b) {
+    return b.name.localeCompare(a.name);
+  }
+};
 
 function readFolder(baseFolder) {
 
@@ -330,16 +378,7 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   });
 
   // sort the image array by exif timestamp and filename as fallback
-  images.sort(function (a, b) {
-    var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
-    var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
-
-    var diff = timeA - timeB;
-    if (diff !== 0) {
-      return diff;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  images.sort(orderFunctions[ARGS.order]);
 
   var metaData = {
     meta: {
