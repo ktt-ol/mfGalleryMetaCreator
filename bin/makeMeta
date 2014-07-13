@@ -25,10 +25,16 @@ var CONFIG = {
   maxProcessSpawns: 5
 };
 
-
 /**
  * Startup
  */
+
+var ORDER = [
+  'exifTimeAsc',
+  'exifTimeDesc',
+  'filenameAsc',
+  'filenameDesc'
+];
 
 log.runner = 'mf-gallery-meta-creator';
 
@@ -38,13 +44,6 @@ var ARGS = {
   coverSize: argv.c || argv.coverSize,
   order: argv.order || ORDER[0]
 };
-
-var ORDER = [
-  'exifTimeAsc',
-  'exifTimeDesc',
-  'filenameAsc',
-  'filenameDesc'
-];
 
 if (!ARGS.path) {
   usage('Please specify the path to the images..');
