@@ -226,7 +226,12 @@ function resizeImage(src, target, size) {
     srcPath: src,
     dstPath: target,
     width: size,
-    height: size
+    height: size,
+    customArgs: [
+      // http://www.imagemagick.org/script/command-line-options.php?#resize
+      // adjusts an image so that its orientation is suitable for viewing (i.e. top-left orientation).
+      '-auto-orient'
+    ]
   };
 
   var deferred = Q.defer();
