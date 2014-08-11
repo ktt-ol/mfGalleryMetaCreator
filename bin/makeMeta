@@ -355,6 +355,16 @@ function readSomeExifData(dirContent, imageFilename) {
         }
       }
 
+      // check if the image is rotated and we have to switch width/height
+      // rotation help: http://www.impulseadventure.com/photo/exif-orientation.html
+      var rotation = data.properties['exif:orientation'];
+      if (rotation === '8' || rotation === '6') {
+        var tmp = result.width;
+        //noinspection JSSuspiciousNameCombination
+        result.width = result.height;
+        result.height = tmp;
+      }
+
       log.info('Image metadata read:', target);
 
       deferred.resolve(result);
