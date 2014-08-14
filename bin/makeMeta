@@ -42,7 +42,8 @@ var ARGS = {
   path: argv.p || argv.path,
   size: argv.s || argv.size,
 //  coverSize: argv.c || argv.coverSize,
-  order: argv.order || ORDER[0]
+  order: argv.order || ORDER[0],
+  forceUpdate: !!argv['force-update'] || false
 };
 
 if (!ARGS.path) {
@@ -57,6 +58,7 @@ if (ORDER.indexOf(ARGS.order) === -1) {
   usage('Invalid value for ´order´.');
   return;
 }
+
 
 // make an array if isn't already
 if (!util.isArray(ARGS.size)) {
@@ -91,6 +93,7 @@ function usage(hint) {
   log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
   log.writeln('\t--order=' + ORDER.join('|'));
   log.writeln('\t\tdefault is '+ ORDER[0]);
+  log.writeln('\t--force-update\t\t\tignores the existing ' + CONFIG.metaName + ' files.');
 //  log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
   log.writeln('');
   log.writeln(log.bold('Example:'));
@@ -171,7 +174,7 @@ function readFolder(baseFolder) {
         );
       }
 
-      if (name === CONFIG.metaName) {
+      if (!ARGS.forceUpdate && name === CONFIG.metaName) {
         log.writeln('Previous generated meta file found in ', folder);
         readJsonPromises.push(
           readJsonFile(fullName).then(function (prevGenMeta) {
