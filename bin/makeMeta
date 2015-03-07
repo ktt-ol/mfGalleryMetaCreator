@@ -11,6 +11,7 @@ var im = require('imagemagick');
 var Q = require('q');
 var arrayFind = require('array-find');
 var async = require('async');
+var SimpleIni = require('simple-ini');
 
 
 /**
@@ -20,7 +21,7 @@ var async = require('async');
 var CONFIG = {
   fileRegExp: /\.jpe?g$/i,
   thumbDir: '.thumbs',
-  albumMetaName: 'album-meta.json',
+  contentINI: 'content.ini',
   metaName: 'meta.json',
   maxProcessSpawns: 5
 };
@@ -136,7 +137,7 @@ var orderFunctions = {
 
 function readFolder(baseFolder) {
 
-  var readJsonPromises = [];
+  var readMetaPromises = [];
 
   function readFolderInternal(folder) {
 
@@ -165,18 +166,16 @@ function readFolder(baseFolder) {
         return;
       }
 
-      if (name === CONFIG.albumMetaName) {
-        log.info('Album meta file found in ', folder);
-        readJsonPromises.push(
-          readJsonFile(fullName).then(function (metaInfo) {
-            content.meta = metaInfo;
-          })
-        );
+      if (name === CONFIG.contentINI) {
+        log.info('Content INI file found in ', folder);
+        content.meta = readINIFile(fullName);
+        console.log('content', content);
       }
+
 
       if (!ARGS.forceUpdate && name === CONFIG.metaName) {
         log.writeln('Previous generated meta file found in ', folder);
-        readJsonPromises.push(
+        readMetaPromises.push(
           readJsonFile(fullName).then(function (prevGenMeta) {
             content.prevImages = (prevGenMeta && prevGenMeta.images) || [];
           })
@@ -195,7 +194,7 @@ function readFolder(baseFolder) {
 
   var result = readFolderInternal(baseFolder);
 
-  return Q.all(readJsonPromises).then(function () {
+  return Q.all(readMetaPromises).then(function () {
     return result;
   });
 }
@@ -222,6 +221,16 @@ function readJsonFile(filename) {
   });
 
   return deferred.promise;
+}
+
+function readINIFile(filename) {
+  var config = new SimpleIni(function() {
+    return fs.readFileSync(filename, 'utf-8');
+  }, {
+    processOptions: [';', '#'],
+    ignoreWhitespace: true
+  });
+  return config;
 }
 
 function resizeImage(src, target, size) {
