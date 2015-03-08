@@ -169,16 +169,18 @@ function readFolder(baseFolder) {
       if (name === CONFIG.contentINI) {
         log.info('Content INI file found in ', folder);
         content.meta = readINIFile(fullName);
-        console.log('content', content);
       }
 
 
       if (!ARGS.forceUpdate && name === CONFIG.metaName) {
         log.writeln('Previous generated meta file found in ', folder);
         readMetaPromises.push(
-          readJsonFile(fullName).then(function (prevGenMeta) {
+          readJsonFile(fullName).then(
+            function ok(prevGenMeta) {
             content.prevImages = (prevGenMeta && prevGenMeta.images) || [];
-          })
+          }, function error(err) {
+              log.info('Error in json file "' + fullName + '": ', err);
+            })
         );
       }
 
@@ -230,7 +232,14 @@ function readINIFile(filename) {
     processOptions: [';', '#'],
     ignoreWhitespace: true
   });
-  return config;
+  var writableConfig = {};
+  for (var key in config) {
+    if (config.hasProperty(key)) {
+      writableConfig[key] = config.get(key);
+    }
+  }
+
+  return writableConfig;
 }
 
 function resizeImage(src, target, size) {
