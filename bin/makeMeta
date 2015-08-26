@@ -370,7 +370,10 @@ function readSomeExifData(dirContent, imageFilename) {
         exif.make = data.properties['exif:make'];
         exif.model = data.properties['exif:model'];
 
-        var timeStr = data.properties['exif:datetimedigitized'] || data.properties['exif:datetimeoriginal'];
+        var timeStr =
+             data.properties['exif:datetimedigitized']
+          || data.properties['exif:datetimeoriginal']
+          || data.properties['exif:datetime'];
         if (timeStr) {
           exif.time = new ExifDate(timeStr).getTime();
         }
