@@ -547,8 +547,13 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   images.sort(orderFunctions[ARGS.order]);
 
   var titleAndDate = getTitleAndDate(dirContent.foldername);
-  // save the time here to have access on this field in parent folders
+
+  // save some attributes here to have access on this field in parent folders
   dirContent.meta.time = (titleAndDate.date && titleAndDate.date.getTime()) || oldestTime;
+  dirContent.meta.imageCount =  dirContent.folder.reduce(function (prev, current) {
+    return prev + current.meta.imageCount;
+  }, images.length);
+
   var metaData = {
     meta: {
       title: dirContent.meta.title || titleAndDate.title,
@@ -565,7 +570,8 @@ function writeMetafile(dirContent, imageFilesWithExif) {
       foldername: subFolderContent.foldername,
       title: subFolderContent.meta.title || subTitleAndDate.title,
       time: (subTitleAndDate.date && subTitleAndDate.date.getTime()) || subFolderContent.meta.time,
-      cover: subFolderContent.meta.cover || subFolderContent.files[0] || null
+      cover: subFolderContent.meta.cover || subFolderContent.files[0] || null,
+      imageCount: subFolderContent.meta.imageCount
     };
     metaData.subDirs.push(subContent);
   });
