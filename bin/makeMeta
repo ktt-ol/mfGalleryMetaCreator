@@ -525,7 +525,16 @@ function readSomeExifData(dirContent, imageFilename) {
 function writeMetafile(dirContent, imageFilesWithExif) {
   log.info('Create metadata file for ', dirContent.fullPath);
 
+  var oldestTime = null;
   var images = imageFilesWithExif.map(function (obj) {
+    // saves also the oldest time as fallback for the folder
+    if (obj.exif && typeof obj.exif.time === 'number') {
+      if (oldestTime === null) {
+        oldestTime = obj.exif.time;
+      } else {
+        oldestTime = Math.min(oldestTime, obj.exif.time);
+      }
+    }
     return {
       filename: obj.filename,
       width: obj.width,
@@ -538,10 +547,12 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   images.sort(orderFunctions[ARGS.order]);
 
   var titleAndDate = getTitleAndDate(dirContent.foldername);
+  // save the time here to have access on this field in parent folders
+  dirContent.meta.time = (titleAndDate.date && titleAndDate.date.getTime()) || oldestTime;
   var metaData = {
     meta: {
       title: dirContent.meta.title || titleAndDate.title,
-      time: titleAndDate.date && titleAndDate.date.getTime(),
+      time: dirContent.meta.time,
       description: dirContent.meta.description || ''
     },
     images: images,
@@ -553,7 +564,7 @@ function writeMetafile(dirContent, imageFilesWithExif) {
     var subContent = {
       foldername: subFolderContent.foldername,
       title: subFolderContent.meta.title || subTitleAndDate.title,
-      time: subTitleAndDate.date && subTitleAndDate.date.getTime(),
+      time: (subTitleAndDate.date && subTitleAndDate.date.getTime()) || subFolderContent.meta.time,
       cover: subFolderContent.meta.cover || subFolderContent.files[0] || null
     };
     metaData.subDirs.push(subContent);
@@ -574,6 +585,12 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   return deferred.promise;
 }
 
+
+/**
+ * Reads recursively all sub folders and exif data for all images. Writes for every folder a meta file containing all collected information.
+ * @param dirContent
+ * @returns {*}
+ */
 function workOnDirContent(dirContent) {
   var readExifMetaPromises = [];
 
