@@ -27,6 +27,14 @@ var CONFIG = {
 };
 
 /**
+ * @typedef  {Object} Image
+ * @property {string} filename
+ * @property {Object} exif
+ *
+ */
+
+
+/**
  * Startup
  */
 
@@ -93,7 +101,7 @@ function usage(hint) {
   log.writeln('\t-p or --path= \t\t\tthe path to images');
   log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
   log.writeln('\t--order=' + ORDER.join('|'));
-  log.writeln('\t\tdefault is '+ ORDER[0]);
+  log.writeln('\t\tdefault is ' + ORDER[0]);
   log.writeln('\t--force-update\t\t\tignores the existing ' + CONFIG.metaName + ' files.');
 //  log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
   log.writeln('');
@@ -103,6 +111,24 @@ function usage(hint) {
 }
 
 var orderFunctions = {
+  timeAsc: function (a, b) {
+    var timeA = (a.time) || Number.MAX_VALUE;
+    var timeB = (b.time) || Number.MAX_VALUE;
+
+    var diff = timeA - timeB;
+    if (diff !== 0) {
+      return diff;
+    }
+
+    return a.title.localeCompare(b.title);
+  },
+
+  /**
+   * Compares two image objects
+   * @param {Image} a
+   * @param {Image} b
+   * @returns {*}
+   */
   exifTimeAsc: function (a, b) {
     var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
     var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
@@ -112,9 +138,15 @@ var orderFunctions = {
       return diff;
     }
 
-    return a.name.localeCompare(b.name);
+    return a.filename.localeCompare(b.filename);
   },
 
+  /**
+   * Compares two image objects
+   * @param {Image} a
+   * @param {Image} b
+   * @returns {*}
+   */
   exifTimeDesc: function (a, b) {
     var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
     var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
@@ -123,18 +155,59 @@ var orderFunctions = {
     if (diff !== 0) {
       return diff;
     }
-    return a.name.localeCompare(b.name);
+    return a.filename.localeCompare(b.filename);
   },
 
+  /**
+   * Compares two image objects
+   * @param {Image} a
+   * @param {Image} b
+   * @returns {*}
+   */
   filenameAsc: function (a, b) {
-    return a.name.localeCompare(b.name);
+    return a.filename.localeCompare(b.name);
   },
 
+  /**
+   * Compares two image objects
+   * @param {Image} a
+   * @param {Image} b
+   * @returns {*}
+   */
   filenameDesc: function (a, b) {
-    return b.name.localeCompare(a.name);
+    return b.filename.localeCompare(a.name);
   }
 };
 
+/*
+ {
+ fullPath: '../mfGallery/app/test-album/album1',
+ foldername: 'album1',
+ meta {
+ title: 'top "album"',
+ 'description ': 'dsa oberste Album, blah sogar mit zeilenumbrauch'
+ },
+ files:
+ [ 'P1000628.JPG',
+ ...
+ ],
+ folder:
+ [ { fullPath: '../mfGallery/app/test-album/album1/leer',
+ foldername: 'leer',
+ meta: {},
+ files: [],
+ folder: [],
+ prevImages: [] },
+ ...
+ ],
+ prevImages:
+ [ { filename: 'P1000628.JPG',
+ width: 3200,
+ height: 2403,
+ exif: [Object] },
+ ...
+ ] }
+ */
 function readFolder(baseFolder) {
 
   var readMetaPromises = [];
@@ -143,7 +216,7 @@ function readFolder(baseFolder) {
 
     var content = {
       fullPath: folder,
-      name: path.basename(folder),
+      foldername: path.basename(folder),
       meta: {},
       files: [],
       folder: [],
@@ -151,14 +224,14 @@ function readFolder(baseFolder) {
       prevImages: []
     };
 
-    fs.readdirSync(folder).forEach(function (name) {
+    fs.readdirSync(folder).forEach(function (folderEntry) {
 
       // skip .xxxx folder/files
-      if (name.indexOf('.') === 0) {
+      if (folderEntry.indexOf('.') === 0) {
         return;
       }
 
-      var fullName = folder + '/' + name;
+      var fullName = folder + '/' + folderEntry;
       var stat = fs.statSync(fullName);
 
       if (stat.isDirectory()) {
@@ -166,29 +239,29 @@ function readFolder(baseFolder) {
         return;
       }
 
-      if (name === CONFIG.contentINI) {
+      if (folderEntry === CONFIG.contentINI) {
         log.info('Content INI file found in ', folder);
         content.meta = readINIFile(fullName);
       }
 
 
-      if (!ARGS.forceUpdate && name === CONFIG.metaName) {
+      if (!ARGS.forceUpdate && folderEntry === CONFIG.metaName) {
         log.writeln('Previous generated meta file found in ', folder);
         readMetaPromises.push(
           readJsonFile(fullName).then(
             function ok(prevGenMeta) {
-            content.prevImages = (prevGenMeta && prevGenMeta.images) || [];
-          }, function error(err) {
+              content.prevImages = (prevGenMeta && prevGenMeta.images) || [];
+            }, function error(err) {
               log.info('Error in json file "' + fullName + '": ', err);
             })
         );
       }
 
-      if (!CONFIG.fileRegExp.test(name)) {
+      if (!CONFIG.fileRegExp.test(folderEntry)) {
         return;
       }
 
-      content.files.push(name);
+      content.files.push(folderEntry);
     });
 
     return content;
@@ -197,6 +270,7 @@ function readFolder(baseFolder) {
   var result = readFolderInternal(baseFolder);
 
   return Q.all(readMetaPromises).then(function () {
+    console.log(result);
     return result;
   });
 }
@@ -226,7 +300,7 @@ function readJsonFile(filename) {
 }
 
 function readINIFile(filename) {
-  var config = new SimpleIni(function() {
+  var config = new SimpleIni(function () {
     return fs.readFileSync(filename, 'utf-8');
   }, {
     processOptions: [';', '#'],
@@ -314,6 +388,51 @@ function ExifDate(value) {
 }
 
 /**
+ * Can parse:
+ 2015-08-27_Title_boing
+ 2015-08_Title_boing
+ 2015_Title_boing
+ Title_boing
+ * @param {string} filename
+ */
+function getTitleAndDate(filename) {
+  function makeResult(plainName, year, month, day) {
+    if (month) {
+      // convert to the 0-based month value
+      month = parseInt(month, 10) - 1;
+    }
+    return {
+      date: new Date(year, month || 0, day || 1),
+      title: makeTitle(plainName)
+    };
+  }
+
+  function makeTitle(name) {
+    return name.replace(/_/g, ' ');
+  }
+
+  var match = filename.match(/(\d{4})-(\d{2})-(\d{2})_(.*)/);
+  if (match) {
+    return makeResult(match[4], match[1], match[2], match[3]);
+  }
+
+  match = filename.match(/(\d{4})-(\d{2})_(.*)/);
+  if (match) {
+    return makeResult(match[3], match[1], match[2]);
+  }
+
+  match = filename.match(/(\d{4})_(.*)/);
+  if (match) {
+    return makeResult(match[2], match[1]);
+  }
+
+  return {
+    date: null,
+    title: makeTitle(filename)
+  };
+}
+
+/**
  *
  * @param dirContent
  * @param imageFilename
@@ -323,14 +442,14 @@ function readSomeExifData(dirContent, imageFilename) {
 
   var result = {
     path: dirContent.fullPath,
-    name: imageFilename,
+    filename: imageFilename,
     width: -1,
     height: -1,
     exif: {}
   };
 
   var prevData = arrayFind(dirContent.prevImages, function (element) {
-    return element.name === imageFilename;
+    return element.filename === imageFilename;
   });
 
   if (prevData) {
@@ -371,7 +490,7 @@ function readSomeExifData(dirContent, imageFilename) {
         exif.model = data.properties['exif:model'];
 
         var timeStr =
-             data.properties['exif:datetimedigitized']
+          data.properties['exif:datetimedigitized']
           || data.properties['exif:datetimeoriginal']
           || data.properties['exif:datetime'];
         if (timeStr) {
@@ -408,7 +527,7 @@ function writeMetafile(dirContent, imageFilesWithExif) {
 
   var images = imageFilesWithExif.map(function (obj) {
     return {
-      name: obj.name,
+      filename: obj.filename,
       width: obj.width,
       height: obj.height,
       exif: obj.exif
@@ -418,9 +537,11 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   // sort the image array by exif timestamp and filename as fallback
   images.sort(orderFunctions[ARGS.order]);
 
+  var titleAndDate = getTitleAndDate(dirContent.foldername);
   var metaData = {
     meta: {
-      name: dirContent.meta.name || dirContent.name,
+      title: dirContent.meta.title || titleAndDate.title,
+      time: titleAndDate.date && titleAndDate.date.getTime(),
       description: dirContent.meta.description || ''
     },
     images: images,
@@ -428,11 +549,16 @@ function writeMetafile(dirContent, imageFilesWithExif) {
   };
 
   dirContent.folder.forEach(function (subFolderContent) {
-    var subContent = subFolderContent.meta;
-    subContent.folder = subFolderContent.name;
-    subContent.cover = subContent.cover || subFolderContent.files[0] || null;
+    var subTitleAndDate = getTitleAndDate(subFolderContent.foldername);
+    var subContent = {
+      foldername: subFolderContent.foldername,
+      title: subFolderContent.meta.title || subTitleAndDate.title,
+      time: subTitleAndDate.date && subTitleAndDate.date.getTime(),
+      cover: subFolderContent.meta.cover || subFolderContent.files[0] || null
+    };
     metaData.subDirs.push(subContent);
   });
+  metaData.subDirs.sort(orderFunctions.timeAsc);
 
   var deferred = Q.defer();
   var fullFilename = dirContent.fullPath + '/' + CONFIG.metaName;
@@ -471,7 +597,6 @@ function workOnDirContent(dirContent) {
 
 
 /* Start here */
-
 
 if (!fs.existsSync(ARGS.path)) {
   log.error('Path "', ARGS.path, '" did not exists.');
