@@ -165,7 +165,7 @@ var orderFunctions = {
    * @returns {*}
    */
   filenameAsc: function (a, b) {
-    return a.filename.localeCompare(b.name);
+    return a.filename.localeCompare(b.filename);
   },
 
   /**
@@ -175,7 +175,7 @@ var orderFunctions = {
    * @returns {*}
    */
   filenameDesc: function (a, b) {
-    return b.filename.localeCompare(a.name);
+    return b.filename.localeCompare(a.filename);
   }
 };
 
