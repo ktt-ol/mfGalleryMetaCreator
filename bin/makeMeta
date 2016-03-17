@@ -111,11 +111,11 @@ function usage(hint) {
 }
 
 var orderFunctions = {
-  timeAsc: function (a, b) {
-    var timeA = (a.time) || Number.MAX_VALUE;
-    var timeB = (b.time) || Number.MAX_VALUE;
+  timeDesc: function (a, b) {
+    var timeA = (a.time) || Number.MIN_VALUE;
+    var timeB = (b.time) || Number.MIN_VALUE;
 
-    var diff = timeA - timeB;
+    var diff = timeB - timeA;
     if (diff !== 0) {
       return diff;
     }
@@ -148,8 +148,8 @@ var orderFunctions = {
    * @returns {*}
    */
   exifTimeDesc: function (a, b) {
-    var timeA = (a.exif && a.exif.time) || Number.MAX_VALUE;
-    var timeB = (b.exif && b.exif.time) || Number.MAX_VALUE;
+    var timeA = (a.exif && a.exif.time) || Number.MIN_VALUE;
+    var timeB = (b.exif && b.exif.time) || Number.MIN_VALUE;
 
     var diff = timeB - timeA;
     if (diff !== 0) {
@@ -575,7 +575,7 @@ function writeMetafile(dirContent, imageFilesWithExif) {
     };
     metaData.subDirs.push(subContent);
   });
-  metaData.subDirs.sort(orderFunctions.timeAsc);
+  metaData.subDirs.sort(orderFunctions.timeDesc);
 
   var deferred = Q.defer();
   var fullFilename = dirContent.fullPath + '/' + CONFIG.metaName;
