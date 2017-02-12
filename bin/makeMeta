@@ -13,7 +13,6 @@ var arrayFind = require('array-find');
 var async = require('async');
 var SimpleIni = require('simple-ini');
 
-
 /**
  * Config
  */
@@ -23,8 +22,14 @@ var CONFIG = {
   thumbDir: '.thumbs',
   contentINI: 'content.ini',
   metaName: 'meta.json',
+  metaNameChromecast: 'meta_cc.js',
   maxProcessSpawns: 5
 };
+
+
+var CC_PREFIX = 'var ifs_images = ';
+var CC_SUFFIX = ';';
+
 
 /**
  * @typedef  {Object} Image
@@ -52,7 +57,8 @@ var ARGS = {
   size: argv.s || argv.size,
 //  coverSize: argv.c || argv.coverSize,
   order: argv.order || ORDER[0],
-  forceUpdate: !!argv['force-update'] || false
+  forceUpdate: !!argv['force-update'] || false,
+  ccSize: argv['cc-size']
 };
 
 if (!ARGS.path) {
@@ -101,6 +107,7 @@ function usage(hint) {
   log.writeln('\t-p or --path= \t\t\tthe path to images');
   log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
   log.writeln('\t--order=' + ORDER.join('|'));
+  log.writeln('\t--cc-size= \t\t\tcreates a JS file for the Chromecast for this thumbnail size.');
   log.writeln('\t\tdefault is ' + ORDER[0]);
   log.writeln('\t--force-update\t\t\tignores the existing ' + CONFIG.metaName + ' files.');
 //  log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
@@ -583,6 +590,19 @@ function writeMetafile(dirContent, imageFilesWithExif) {
     if (err) {
       deferred.reject('write error' + err);
       return;
+    }
+
+    if (ARGS.ccSize) {
+      var fullFilenameCC = dirContent.fullPath + '/' + CONFIG.metaNameChromecast;
+      var castContent = metaData.images.map(function (image) {
+        return {
+          filename: util.format('%s/%d-%s', CONFIG.thumbDir, ARGS.ccSize, image.filename),
+          width: image.width,
+          height: image.height,
+          time: image.exif && image.exif.time
+        };
+      });
+      fs.writeFileSync(fullFilenameCC, CC_PREFIX + JSON.stringify(castContent) + CC_SUFFIX);
     }
 
     deferred.resolve(fullFilename);
