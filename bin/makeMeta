@@ -22,13 +22,13 @@ var CONFIG = {
   thumbDir: '.thumbs',
   contentINI: 'content.ini',
   metaName: 'meta.json',
-  metaNameChromecast: 'meta_cc.js',
+  metaNameChromecast: 'meta_cc.jsonp.js',
   maxProcessSpawns: 5
 };
 
 
-var CC_PREFIX = 'var ifs_images = ';
-var CC_SUFFIX = ';';
+var CC_PREFIX = 'ifsImagesDataCallback(';
+var CC_SUFFIX = ');';
 
 
 /**
@@ -107,7 +107,7 @@ function usage(hint) {
   log.writeln('\t-p or --path= \t\t\tthe path to images');
   log.writeln('\t-s or --size= \t\t\tthe bounding box of the thumbnails. You can use this parameter more than once.');
   log.writeln('\t--order=' + ORDER.join('|'));
-  log.writeln('\t--cc-size= \t\t\tcreates a JS file for the Chromecast for this thumbnail size.');
+  log.writeln('\t--cc-size= \t\t\tcreates a jsonp file for the Chromecast for this thumbnail size.');
   log.writeln('\t\tdefault is ' + ORDER[0]);
   log.writeln('\t--force-update\t\t\tignores the existing ' + CONFIG.metaName + ' files.');
 //  log.writeln('\t-c or --coverSize=\t\t\ta size especially for the cover images');
